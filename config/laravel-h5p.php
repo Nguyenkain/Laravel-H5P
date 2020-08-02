@@ -19,6 +19,7 @@ return [
     'views'           => 'h5p', // h5p view path
     'layout'          => 'h5p.layouts.h5p', // layoute path
     'use_router'      => 'ALL', // ALL,EXPORT,EDITOR
+    'preload_all_libraries' => false, // enable this if your server is slow when adding a new content, due to lots of SQL connections on content parameter filter, it'll reduce several load libraries connections to only 2 connections with everything and use collection filter
 
     'H5P_DISABLE_AGGREGATION' => false,
 

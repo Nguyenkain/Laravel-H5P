@@ -41,6 +41,8 @@ class LaravelH5pRepository implements H5PFrameworkInterface
     protected $messages = ['error' => [], 'updated' => []];
 
     private $loadedLibraries = [];
+    private $allLibraries = [];
+    private $allDependencies = [];
 
     public function loadAddons()
     {
@@ -554,19 +556,45 @@ class LaravelH5pRepository implements H5PFrameworkInterface
             return $this->loadedLibraries[$uberName];
         }
 
-        $library = DB::table('h5p_libraries')
-            ->select(['id as libraryId', 'name as machineName', 'title', 'major_version as majorVersion', 'minor_version as minorVersion', 'patch_version as patchVersion', 'embed_types as embedTypes', 'preloaded_js as preloadedJs', 'preloaded_css as preloadedCss', 'drop_library_css as dropLibraryCss', 'fullscreen', 'runnable', 'semantics', 'has_icon as hasIcon'])
-            ->where('name', $name)
-            ->where('major_version', $majorVersion)
-            ->where('minor_version', $minorVersion)
-            ->first();
+        if (config('laravel-h5p.preload_all_libraries')) {
+            if (count($this->allLibraries) == 0) {
+                $this->allLibraries = DB::table('h5p_libraries')
+                    ->select(['id as libraryId', 'name as machineName', 'title', 'major_version as majorVersion', 'minor_version as minorVersion', 'patch_version as patchVersion', 'embed_types as embedTypes', 'preloaded_js as preloadedJs', 'preloaded_css as preloadedCss', 'drop_library_css as dropLibraryCss', 'fullscreen', 'runnable', 'semantics', 'has_icon as hasIcon'])
+                    ->get();
+            }
+
+            $library = $this->allLibraries->filter(function ($val) use ($name, $majorVersion, $minorVersion) {
+                return $val->machineName == $name
+                    && $val->majorVersion == $majorVersion
+                    && $val->minorVersion == $minorVersion;
+            })->first();
+        } else {
+            $library = DB::table('h5p_libraries')
+                ->select(['id as libraryId', 'name as machineName', 'title', 'major_version as majorVersion', 'minor_version as minorVersion', 'patch_version as patchVersion', 'embed_types as embedTypes', 'preloaded_js as preloadedJs', 'preloaded_css as preloadedCss', 'drop_library_css as dropLibraryCss', 'fullscreen', 'runnable', 'semantics', 'has_icon as hasIcon'])
+                ->where('name', $name)
+                ->where('major_version', $majorVersion)
+                ->where('minor_version', $minorVersion)
+                ->first();
+        }
 
         $return = json_decode(json_encode($library), true);
 
-        $dependencies = DB::select('SELECT hl.name as machineName, hl.major_version as majorVersion, hl.minor_version as minorVersion, hll.dependency_type as dependencyType
-        FROM h5p_libraries_libraries hll
-        JOIN h5p_libraries hl ON hll.required_library_id = hl.id
-        WHERE hll.library_id = ?', [$library->libraryId]);
+        if (config('laravel-h5p.preload_all_libraries')) {
+            if (count($this->allDependencies) == 0) {
+                $this->allDependencies = collect(json_decode(json_encode(DB::select('SELECT hl.name as machineName, hl.major_version as majorVersion, hl.minor_version as minorVersion, hll.dependency_type as dependencyType, hll.library_id as libraryId
+                FROM h5p_libraries_libraries hll
+                JOIN h5p_libraries hl ON hll.required_library_id = hl.id'))));
+            }
+
+            $dependencies = $this->allDependencies->filter(function ($val) use ($library) {
+                return $val->libraryId == $library->libraryId;
+            });
+        } else {
+            $dependencies = DB::select('SELECT hl.name as machineName, hl.major_version as majorVersion, hl.minor_version as minorVersion, hll.dependency_type as dependencyType
+            FROM h5p_libraries_libraries hll
+            JOIN h5p_libraries hl ON hll.required_library_id = hl.id
+            WHERE hll.library_id = ?', [$library->libraryId]);
+        }
 
         foreach ($dependencies as $dependency) {
             $return[$dependency->dependencyType.'Dependencies'][] = [
